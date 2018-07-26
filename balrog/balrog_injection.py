@@ -29,6 +29,7 @@ from collections import OrderedDict
 from astropy.io import fits
 from astropy import wcs
 from astropy.table import Table
+import pdb,string
 
 # Balrog files
 import injector
@@ -71,7 +72,7 @@ _allowed_bands = 'grizy'
 
 # TODO: Allow Piff when available!
 _supported_psf_types = ['DES_PSFEx']#, 'Piff'}
-_psf_extensions = {'DES_PSFEx' : 'psfexcat.psf'}#, 'Piff' : 'something.piff'}
+_psf_extensions = {'DES_PSFEx' : '.psf'}#, 'Piff' : 'something.piff'}
 
 # TODO: Incorporate postage stamps!
 _supported_input_types = ['ngmix_catalog', 'des_star_catalog', 'cosmos_chromatic_catalog']#, 'postage_stamps'}
@@ -137,7 +138,7 @@ class Tile(object):
         self._setup_bal_config(config)
 
         # Load zeropoint list from file
-        self._load_zeropoints(config)
+        #self._load_zeropoints(config)
 
         # Load background images, if needed
         self._load_backgrounds(config)
@@ -160,8 +161,10 @@ class Tile(object):
 
         # In [ramin, ramax, decmin, decmax] format:
         # self.u_area = config.u_areas[:, self.indx]
-        self.ramin, self.ramax, self.decmin, self.decmax = config.u_areas[:, self.indx]
-
+        
+        #self.ramin, self.ramax, self.decmin, self.decmax = config.u_areas[:, self.indx]
+        # The line shown above threw an error, so I am removing self.indx 
+        self.ramin, self.ramax, self.decmin, self.decmax = config.u_areas[:]
         # Account for tiles that cross over 360/0 boundary
         if self.ramin > self.ramax:
             # NOTE: For consistency w/ catalog, leave them flipped from expectation
@@ -196,12 +199,19 @@ class Tile(object):
         '''
         Load WCS info for each tile from geometry file.
         '''
-
-        crpix1, crpix2 = config.geom['CRPIX1'][self.indx], config.geom['CRPIX2'][self.indx]
-        crval1, crval2 = config.geom['CRVAL1'][self.indx], config.geom['CRVAL2'][self.indx]
-        ctype1, ctype2 = config.geom['CTYPE1'][self.indx], config.geom['CTYPE2'][self.indx]
-        cd1_1, cd1_2 = config.geom['CD1_1'][self.indx], config.geom['CD1_2'][self.indx]
-        cd2_1, cd2_2 = config.geom['CD2_1'][self.indx], config.geom['CD2_2'][self.indx]
+        try:
+            crpix1, crpix2 = config.geom['CRPIX1'][self.indx], config.geom['CRPIX2'][self.indx]
+            crval1, crval2 = config.geom['CRVAL1'][self.indx], config.geom['CRVAL2'][self.indx]
+            ctype1, ctype2 = config.geom['CTYPE1'][self.indx], config.geom['CTYPE2'][self.indx]
+            cd1_1, cd1_2 = config.geom['CD1_1'][self.indx], config.geom['CD1_2'][self.indx]
+            cd2_1, cd2_2 = config.geom['CD2_1'][self.indx], config.geom['CD2_2'][self.indx]
+        except:
+            crpix1, crpix2 = config.geom['CRPIX1'], config.geom['CRPIX2']
+            crval1, crval2 = config.geom['CRVAL1'], config.geom['CRVAL2']
+            ctype1, ctype2 = config.geom['CTYPE1'], config.geom['CTYPE2']
+            cd1_1, cd1_2 = config.geom['CD1_1'], config.geom['CD1_2']
+            cd2_1, cd2_2 = config.geom['CD2_1'], config.geom['CD2_2']
+            
 
         # Create WCS object
         self.wcs = wcs.WCS()
@@ -211,10 +221,17 @@ class Tile(object):
         self.wcs.wcs.cd = [[cd1_1, cd1_2], [cd2_1, cd2_2]]
 
         # Set pixel information
-        self.pixel_scale = config.geom['PIXELSCALE'][self.indx]
-        # These are (ra, dec) and both 10,000 for DES tiles
-        self.Npix_x = config.geom['NAXIS1'][self.indx]
-        self.Npix_y = config.geom['NAXIS2'][self.indx]
+        try:
+            self.pixel_scale = config.geom['PIXELSCALE'][self.indx]
+            # These are (ra, dec) and both 10,000 for DES tiles
+            self.Npix_x = config.geom['NAXIS1'][self.indx]
+            self.Npix_y = config.geom['NAXIS2'][self.indx]
+        except:
+            self.pixel_scale = 0.265
+            # These are (ra, dec) and both 10,000 for DES tiles
+            self.Npix_x = config.geom['NAXIS1']
+            self.Npix_y = config.geom['NAXIS2']
+            
 
         return
 
@@ -382,14 +399,16 @@ class Tile(object):
                 # Grab chip zeropoint for this file
                 # QUESTION: Should we allow chips that aren't in the .dat file and
                 #           just assign a zp of 30?
-                zp = self.zeropoints[band][f]
+                #zp = self.zeropoints[band][f]
 
                 # Add chip to list
                 filename = os.path.join(b_dir, f)
-                # pudb.set_trace()
-                self.chips[band].append(Chip(filename, band, config, tile_name=self.tile_name,
-                                             zeropoint=zp, tile=self))
 
+                #self.chips[band].append(Chip(filename, band, config, tile_name=self.tile_name,
+                                             #zeropoint=zp, tile=self))
+                
+                self.chips[band].append(Chip(filename, band, config, tile_name=self.tile_name,
+                                                 tile=self))
         # pudb.set_trace()
 
         return
@@ -526,7 +545,8 @@ class Tile(object):
         if input_type == 'ngmix_catalog' or input_type == 'cosmos_chromatic_catalog':
             input_type = 'ngmix_catalog'
             gal_type = config.input_types['gals']
-            if config.data_version == 'y3v02':
+            #if config.data_version == 'y3v02':
+            if config.data_version != '0':
                 # Generate galaxy positions and indices if this is the first realization
                 if realization == config.realizations[0]:
                     # Can't guarantee galaxy count consistency, so use dicts
@@ -551,7 +571,11 @@ class Tile(object):
                             self.gals_pos[real] = np.column_stack((ra, dec))
 
                             # Generate galaxy indices (in input catalog)
-                            indices = np.array(rand.sample(xrange(Ng), ngals))
+        
+                            try:
+                                indices = np.array(rand.sample(xrange(Ng), ngals))
+                            except:
+                                indices = np.random.choice(Ng, ngals,replace=True)
                             # indices = sample_uniform_indx(0, config.input_nobjects[gal_type], Ng)
                             self.gals_indx[real] = indices
 
@@ -723,6 +747,7 @@ class Tile(object):
 
             # Setup the 'psf' field
             psf_file = chip.psf_filename
+            #pdb.set_trace()
             if psf_file is not None:
                 self.bal_config[i]['input'] = {
                     'des_psfex' : {
@@ -913,12 +938,11 @@ class Tile(object):
             # NOTE: Can't run galsim executable (besides being a waste of time) as
             # the base layer yaml config won't be valid without extra additions.
             return
-
+        
         # A new GalSim config file for Balrog injections has been created and all simulations
         # can now be run simultaneously using all GalSim machinery
         # bashCommand = 'galsim {} -v 2 -l gs_logfile'.format(self.bal_config_file)
         bashCommand = 'galsim {} -v {}'.format(self.bal_config_file, vb)
-
         process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
 
         # pudb.set_trace()
@@ -986,7 +1010,7 @@ class Tile(object):
 
         for inj_type, outfile in outfiles.items():
             try:
-                with fitsio.FITS(outfile, 'rw', clobber=True) as truth_table:
+                with fitsio.FITS(outfile, 'rw', overwrite=True) as truth_table:
 
                     truth_table.write(truth[inj_type])
 
@@ -1096,9 +1120,12 @@ def combine_fits_extensions(combined_file, bal_file, orig_file, config=None):
     sciIm = fitsio.read(bal_file, ext=0)
     sciHdr = fitsio.read_header(orig_file, ext=0)
     wgtIm, wgtHdr = fitsio.read(orig_file, ext=1, header=True)
-    wgt_me_Im, wgt_me_Hdr = fitsio.read(orig_file, ext=2, header=True)
-    mskIm, mskHdr = fitsio.read(orig_file, ext=3, header=True)
-
+    try:
+        wgt_me_Im, wgt_me_Hdr = fitsio.read(orig_file, ext=2, header=True)
+        mskIm, mskHdr = fitsio.read(orig_file, ext=3, header=True)
+    except:
+        pass
+    
     # If injecting on blank images, then set these to some sensible values
     # pudb.set_trace()
     if config:
@@ -1116,15 +1143,21 @@ def combine_fits_extensions(combined_file, bal_file, orig_file, config=None):
 
     fits = fitsio.FITS(combined_file,'rw')
     fits.write(sciIm, header=sciHdr)
+    fits[0].write_key('EXTNAME', 'SCI', comment="Extension name")
     fits.write(wgtIm, header=wgtHdr)
-    fits.write(wgt_me_Im, header=wgtHdr)
-    fits.write(mskIm, header=mskHdr)
+    try:
+        
+        fits.write(wgt_me_Im, header=wgtHdr)
+        fits.write(mskIm, header=mskHdr)
+        fits[2].write_key('EXTNAME', 'WGT_ME', comment="Extension name")
+        fits[3].write_key('EXTNAME', 'MSK', comment="Extension name")
+
+    except:
+        pass
 
     # Put back EXTNAME into headers
-    fits[0].write_key('EXTNAME', 'SCI', comment="Extension name")
+    
     fits[1].write_key('EXTNAME', 'WGT', comment="Extension name")
-    fits[2].write_key('EXTNAME', 'WGT_ME', comment="Extension name")
-    fits[3].write_key('EXTNAME', 'MSK', comment="Extension name")
 
     return
 
@@ -1169,7 +1202,10 @@ class Chip(object):
         # NOTE: For `inmasked` images, should be 0:4.
         '''
 
-        self.name = '_'.join(self.fits_filename.split('_')[s_begin:s_end])
+        #self.name = '_'.join(self.fits_filename.split('_')[s_begin:s_end])
+        # This was problematic for my DECam chips, so I'm doing something WAY simpler
+
+        self.name=string.split(self.fits_filename,'.')[0]
 
         return
 
@@ -1190,7 +1226,7 @@ class Chip(object):
                 # dir and filename separate; must be combined for an absolute path. This is
                 # due to the psf file and chip file being stored in different directories.
                 self.psf_dir = os.path.join(config.tile_dir, self.tile_name, config.psf_dir)
-                self.psf_filename = os.path.join(self.psf_dir, self.name + '_' + self.psf_extension)
+                self.psf_filename = os.path.join(self.psf_dir, self.name + self.psf_extension)
 
             else:
                 # Some basic GalSim psf types will still work, even if not technically supported
@@ -1215,7 +1251,6 @@ class Chip(object):
         Especially useful for galaxy position rejection.
         NOTE: The nullwt chips are not oriented in the standard way.
         In a typical (RA,DEC) projection space:
-
         DEC increasing up
         .
         .
@@ -1223,9 +1258,7 @@ class Chip(object):
         -           -
         -           -
         2-----------3....RA increasing right
-
         In the DES nullwt chip orientation:
-
         RA increasing up
         .
         .
@@ -1235,23 +1268,29 @@ class Chip(object):
         -       -
         -       -
         1-------2....DEC decreasing right
-
         Because of the strange orientation, wcs_world2pix([ra, dec]) will
         return correct image coordinates but will be flipped from what we
         normally expect; i.e. IN_PIX: (x,y) ~= (DEC, RA).
         This will affect how we implement contained_in_chip().
         '''
 
-        hdr = fits.getheader(self.filename)
+        hdr = fits.getheader(self.filename,1) #change by me
         # Get chip WCS
         self.wcs = wcs.WCS(hdr)
+        try:
 
-        self.ramin, self.ramax = hdr['RACMIN'], hdr['RACMAX']
-        self.decmin, self.decmax = hdr['DECCMIN'], hdr['DECCMAX']
-        rc = [hdr['RAC1'], hdr['RAC2'], hdr['RAC3'], hdr['RAC4']]
-        dc = [hdr['DECC1'], hdr['DECC2'], hdr['DECC3'], hdr['DECC4']]
-        self.corners = zip(rc,dc)
+            self.ramin, self.ramax = hdr['RACMIN'], hdr['RACMAX']
+            self.decmin, self.decmax = hdr['DECCMIN'], hdr['DECCMAX']
+            rc = [hdr['RAC1'], hdr['RAC2'], hdr['RAC3'], hdr['RAC4']]
+            dc = [hdr['DECC1'], hdr['DECC2'], hdr['DECC3'], hdr['DECC4']]
+            self.corners = zip(rc,dc)
 
+        except:
+            chip_corners=self.wcs.calc_footprint() # These are the corners! Not min/max
+            self.ramin, self.ramax = min(chip_corners[:,0]), max(chip_corners[:,0])
+            self.decmin, self.decmax = min(chip_corners[:,1]), max(chip_corners[:,1])
+            self.corners=chip_corners
+            
         # Round to nearest pixel (very slight offset)
         #NOTE: Should always be (2048x4096), but in principle could allow
         # different sizes
@@ -1348,7 +1387,7 @@ class Chip(object):
             try:
                 # TODO: This is for old version of astropy!
                 #hdu0.writeto(outfile, overwrite=True)
-                hdu0.writeto(outfile, clobber=True)
+                hdu0.writeto(outfile, overwrite=True)
             except (IOError, OSError):
                 path = os.path.dirname(outfile)
                 # To deal with race condition...
@@ -1365,7 +1404,7 @@ class Chip(object):
                 # Now directory is guaranteed to exist
                 # TODO: This is for old version of astropy!
                 #hdu0.writeto(outfile, overwrite=True)
-                hdu0.writeto(outfile, clobber=True)
+                hdu0.writeto(outfile, overwrite=True)
 
         return
 
@@ -1711,14 +1750,22 @@ class Config(object):
 
         # Load unique area bounds from DES coadd tile geometry file
         with fits.open(self.geom_file) as hdu_geom:
-            self.geom = hdu_geom[1].data
-            self.tile_names = self.geom['TILENAME']
-            uramin, uramax = self.geom['URAMIN'], self.geom['URAMAX']
-            udecmin, udecmax = self.geom['UDECMIN'], self.geom['UDECMAX']
-            # Unique tile area
-            self.u_areas = np.array([uramin, uramax, udecmin, udecmax])
-            # pudb.set_trace()
-
+            try:
+                self.geom = hdu_geom[1].data
+                self.tile_names = self.geom['TILENAME']
+                uramin, uramax = self.geom['URAMIN'], self.geom['URAMAX']
+                udecmin, udecmax = self.geom['UDECMIN'], self.geom['UDECMAX']
+                #Unique tile area
+                self.u_areas = np.array([uramin, uramax, udecmin, udecmax])
+            except:
+                self.geom=fits.getheader(self.geom_file)
+                w=wcs.WCS(self.geom_file)
+                radec_arr=w.calc_footprint()
+                max_radec=radec_arr[1]; min_radec=radec_arr[3]
+                uramin, uramax = min_radec[0], max_radec[0]
+                udecmin, udecmax = min_radec[1], max_radec[1]
+                self.u_areas = np.array([uramin, uramax, udecmin, udecmax])
+                self.tile_names = 'A2029'
         return
 
     def _load_input_catalogs(self):
@@ -2175,6 +2222,7 @@ def RunBalrog():
                     if config.sim_gals is True:
                         # Determine which Balrog galaxies are contained in chip, and
                         # get their image coordinates
+                        
                         in_chip, pos_im = chip.contained_in_chip(tile.gals_pos[real])
                         gals_pos_im = pos_im[in_chip]
                         gals_indx = tile.gals_indx[real][in_chip]
